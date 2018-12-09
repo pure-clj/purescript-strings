@@ -31,7 +31,7 @@ module Data.String.CodePoints
 import Prelude
 
 import Data.Array as Array
-import Data.Enum (class BoundedEnum, class Enum, Cardinality(..), defaultPred, defaultSucc, fromEnum, toEnum, toEnumWithDefaults)
+import Data.Enum (class BoundedEnum, class Enum, Cardinality(..), defaultPred, defaultSucc, fromEnum, toEnum)
 import Data.Int (hexadecimal, toStringAs)
 import Data.Maybe (Maybe(..))
 import Data.String.CodeUnits (contains, stripPrefix, stripSuffix) as Exports
@@ -39,8 +39,6 @@ import Data.String.CodeUnits as CU
 import Data.String.Common (toUpper)
 import Data.String.Pattern (Pattern)
 import Data.String.Unsafe as Unsafe
-import Data.Tuple (Tuple(..))
-import Data.Unfoldable (unfoldr)
 
 -- | CodePoint is an Int bounded between 0 and 0x10FFFF, corresponding to
 -- | Unicode code points.
@@ -86,19 +84,11 @@ codePointFromChar = fromEnum >>> CodePoint
 -- | ```
 -- |
 singleton :: CodePoint -> String
-singleton = _singleton singletonFallback
+singleton = _singleton
 
 foreign import _singleton
-  :: (CodePoint -> String)
-  -> CodePoint
+  :: CodePoint
   -> String
-
-singletonFallback :: CodePoint -> String
-singletonFallback (CodePoint cp) | cp <= 0xFFFF = fromCharCode cp
-singletonFallback (CodePoint cp) =
-  let lead = ((cp - 0x10000) / 0x400) + 0xD800 in
-  let trail = (cp - 0x10000) `mod` 0x400 + 0xDC00 in
-  fromCharCode lead <> fromCharCode trail
 
 -- | Creates a string from an array of code points. Operates in space and time
 -- | linear to the length of the array.
@@ -112,11 +102,10 @@ singletonFallback (CodePoint cp) =
 -- | ```
 -- |
 fromCodePointArray :: Array CodePoint -> String
-fromCodePointArray = _fromCodePointArray singletonFallback
+fromCodePointArray = _fromCodePointArray
 
 foreign import _fromCodePointArray
-  :: (CodePoint -> String)
-  -> Array CodePoint
+  :: Array CodePoint
   -> String
 
 -- | Creates an array of code points from a string. Operates in space and time
@@ -131,19 +120,11 @@ foreign import _fromCodePointArray
 -- | ```
 -- |
 toCodePointArray :: String -> Array CodePoint
-toCodePointArray = _toCodePointArray toCodePointArrayFallback unsafeCodePointAt0
+toCodePointArray = _toCodePointArray
 
 foreign import _toCodePointArray
-  :: (String -> Array CodePoint)
-  -> (String -> CodePoint)
-  -> String
+  :: String
   -> Array CodePoint
-
-toCodePointArrayFallback :: String -> Array CodePoint
-toCodePointArrayFallback s = unfoldr unconsButWithTuple s
-
-unconsButWithTuple :: String -> Maybe (Tuple CodePoint String)
-unconsButWithTuple s = (\{ head, tail } -> Tuple head tail) <$> uncons s
 
 -- | Returns the first code point of the string after dropping the given number
 -- | of code points from the beginning, if there is such a code point. Operates
@@ -161,21 +142,14 @@ codePointAt :: Int -> String -> Maybe CodePoint
 codePointAt n _ | n < 0 = Nothing
 codePointAt 0 "" = Nothing
 codePointAt 0 s = Just (unsafeCodePointAt0 s)
-codePointAt n s = _codePointAt codePointAtFallback Just Nothing unsafeCodePointAt0 n s
+codePointAt n s = _codePointAt Just Nothing n s
 
 foreign import _codePointAt
-  :: (Int -> String -> Maybe CodePoint)
-  -> (forall a. a -> Maybe a)
+  :: (forall a. a -> Maybe a)
   -> (forall a. Maybe a)
-  -> (String -> CodePoint)
   -> Int
   -> String
   -> Maybe CodePoint
-
-codePointAtFallback :: Int -> String -> Maybe CodePoint
-codePointAtFallback n s = case uncons s of
-  Just { head, tail } -> if n == 0 then Just head else codePointAtFallback (n - 1) tail
-  _ -> Nothing
 
 -- | Returns a record with the first code point and the remaining code points
 -- | of the string. Returns Nothing if the string is empty. Operates in
@@ -225,22 +199,12 @@ length = Array.length <<< toCodePointArray
 -- | ```
 -- |
 countPrefix :: (CodePoint -> Boolean) -> String -> Int
-countPrefix = _countPrefix countFallback unsafeCodePointAt0
+countPrefix = _countPrefix
 
 foreign import _countPrefix
-  :: ((CodePoint -> Boolean) -> String -> Int)
-  -> (String -> CodePoint)
-  -> (CodePoint -> Boolean)
+  :: (CodePoint -> Boolean)
   -> String
   -> Int
-
-countFallback :: (CodePoint -> Boolean) -> String -> Int
-countFallback p s = countTail p s 0
-
-countTail :: (CodePoint -> Boolean) -> String -> Int -> Int
-countTail p s accum = case uncons s of
-  Just { head, tail } -> if p head then countTail p tail (accum + 1) else accum
-  _ -> accum
 
 -- | Returns the number of code points preceding the first match of the given
 -- | pattern in the string. Returns Nothing when no matches are found.
@@ -314,15 +278,9 @@ lastIndexOf' p i s =
 -- | ```
 -- |
 take :: Int -> String -> String
-take = _take takeFallback
+take = _take
 
-foreign import _take :: (Int -> String -> String) -> Int -> String -> String
-
-takeFallback :: Int -> String -> String
-takeFallback n _ | n < 1 = ""
-takeFallback n s = case uncons s of
-  Just { head, tail } -> singleton head <> takeFallback (n - 1) tail
-  _ -> s
+foreign import _take :: Int -> String -> String
 
 -- | Returns a string containing the leading sequence of code points which all
 -- | match the given predicate from the string. Operates in constant space and
@@ -399,26 +357,10 @@ isLead cu = 0xD800 <= cu && cu <= 0xDBFF
 isTrail :: Int -> Boolean
 isTrail cu = 0xDC00 <= cu && cu <= 0xDFFF
 
-fromCharCode :: Int -> String
-fromCharCode = CU.singleton <<< toEnumWithDefaults bottom top
-
 -- WARN: this function expects the String parameter to be non-empty
 unsafeCodePointAt0 :: String -> CodePoint
-unsafeCodePointAt0 = _unsafeCodePointAt0 unsafeCodePointAt0Fallback
+unsafeCodePointAt0 = _unsafeCodePointAt0
 
 foreign import _unsafeCodePointAt0
-  :: (String -> CodePoint)
-  -> String
+  :: String
   -> CodePoint
-
-unsafeCodePointAt0Fallback :: String -> CodePoint
-unsafeCodePointAt0Fallback s =
-  let
-    cu0 = fromEnum (Unsafe.charAt 0 s)
-  in
-    if isLead cu0 && CU.length s > 1
-       then
-         let cu1 = fromEnum (Unsafe.charAt 1 s) in
-         if isTrail cu1 then unsurrogate cu0 cu1 else CodePoint cu0
-       else
-         CodePoint cu0

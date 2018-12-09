@@ -31,7 +31,7 @@ import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NEA
 import Data.Maybe (Maybe(..), fromJust)
 import Data.Semigroup.Foldable (class Foldable1)
-import Data.Semigroup.Foldable as F1
+import Data.Foldable as FO
 import Data.String.CodeUnits as CU
 import Data.String.NonEmpty.Internal (NonEmptyString, fromString)
 import Data.String.Pattern (Pattern)
@@ -88,10 +88,10 @@ snoc c s = toNonEmptyString (s <> CU.singleton c)
 -- | Creates a `NonEmptyString` from a `Foldable1` container carrying
 -- | characters.
 fromFoldable1 :: forall f. Foldable1 f => f Char -> NonEmptyString
-fromFoldable1 = F1.fold1 <<< coe
+fromFoldable1 x = toNonEmptyString $ FO.foldl go "" x
   where
-    coe ∷ f Char -> f NonEmptyString
-    coe = unsafeCoerce
+    go :: String -> Char -> String
+    go s c = fromNonEmptyString $ snoc c s
 
 -- | Converts the `NonEmptyString` into an array of characters.
 -- |
